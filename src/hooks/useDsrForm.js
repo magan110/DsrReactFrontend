@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 
 const INITIAL_FORM_DATA = {
   // Process & Document
@@ -108,6 +108,13 @@ const INITIAL_FORM_DATA = {
   // Authorization flag
   isAuthorized: true,
 
+  // User context (for backend pendWith hierarchy)
+  loginId: '',
+  sapLgnGr: '',
+  userType: '',
+  zoneCode: 'N',
+  statCode: '',
+
   // Order execution date
   ordExDat: '',
 
@@ -129,6 +136,15 @@ const INITIAL_FORM_DATA = {
 // Activity-specific remark labels (replicate dsrRemAr from JSP)
 export const ACTIVITY_REMARKS = {
   '01': { // Visit to Stockiest/Retailer
+    rem01: 'Topic Discussed',
+    rem02: 'Ugai Recovery Plans',
+    rem03: 'Any Purchaser Grievances',
+    rem04: 'Any Other Points',
+    showCustomer: true,
+    showProduct: true,
+    showProjection: true
+  },
+  '02': { // Retailer Meeting
     rem01: 'Topic Discussed',
     rem02: 'Ugai Recovery Plans',
     rem03: 'Any Purchaser Grievances',
@@ -259,6 +275,61 @@ export const ACTIVITY_REMARKS = {
   }
 };
 
+// Conditional flags based on dsrParam (replicate JSP logic from ActvDsrNew.jsp lines 555-572)
+export const DSR_PARAM_FLAGS = {
+  // actPntRq = true - Show Action Points table
+  '52': { actPntRq: true, prdSelRq: false, prjSelRq: false, cusSelRq: true, cusCodRq: true },
+  '13': { actPntRq: true, prdSelRq: false, prjSelRq: false, cusSelRq: true, cusCodRq: true },
+  '23': { actPntRq: true, prdSelRq: false, prjSelRq: false, cusSelRq: true, cusCodRq: true },
+  '41': { actPntRq: true, prdSelRq: false, prjSelRq: false, cusSelRq: true, cusCodRq: true },
+  '50': { actPntRq: true, prdSelRq: false, prjSelRq: false, cusSelRq: true, cusCodRq: false },
+
+  // prdSelRq = true - Show Product Selection (Order Details)
+  '01': { actPntRq: false, prdSelRq: true, prjSelRq: true, cusSelRq: true, cusCodRq: true },
+  '02': { actPntRq: false, prdSelRq: true, prjSelRq: false, cusSelRq: true, cusCodRq: true },
+  '61': { actPntRq: false, prdSelRq: true, prjSelRq: false, cusSelRq: true, cusCodRq: false },
+  '51': { actPntRq: false, prdSelRq: true, prjSelRq: false, cusSelRq: false, cusCodRq: false },
+  '11': { actPntRq: false, prdSelRq: true, prjSelRq: false, cusSelRq: true, cusCodRq: true },
+  '21': { actPntRq: false, prdSelRq: true, prjSelRq: true, cusSelRq: true, cusCodRq: true },
+
+  // prjSelRq = true - Show Projection column
+  '01': { actPntRq: false, prdSelRq: true, prjSelRq: true, cusSelRq: true, cusCodRq: true },
+  '21': { actPntRq: false, prdSelRq: true, prjSelRq: true, cusSelRq: true, cusCodRq: true },
+
+  // Show Customer selection
+  '04': { actPntRq: false, prdSelRq: false, prjSelRq: false, cusSelRq: true, cusCodRq: true },
+  '05': { actPntRq: false, prdSelRq: false, prjSelRq: false, cusSelRq: true, cusCodRq: true },
+  '12': { actPntRq: false, prdSelRq: false, prjSelRq: false, cusSelRq: true, cusCodRq: true },
+  '22': { actPntRq: false, prdSelRq: false, prjSelRq: false, cusSelRq: true, cusCodRq: true },
+
+  // Default - show customer and require code
+  'default': { actPntRq: false, prdSelRq: false, prjSelRq: false, cusSelRq: true, cusCodRq: true }
+};
+
+// Get conditional flags for a dsrParam
+export const getDsrParamFlags = (dsrParam) => {
+  return DSR_PARAM_FLAGS[dsrParam] || DSR_PARAM_FLAGS['default'];
+};
+
+// Get customer type list for a dsrParam
+export const getCustomerTypes = (dsrParam) => {
+  const baseTypes = [
+    { code: 'R', desc: 'Retailer' },
+    { code: 'RR', desc: 'Rural Retailer' },
+    { code: 'C', desc: 'Stockiest/Urban Stockiest' },
+    { code: 'D', desc: 'Direct Dealer' },
+    { code: 'RD', desc: 'Rural Stockiest' },
+    { code: 'AD', desc: 'AD' },
+    { code: 'UR', desc: 'UBS' }
+  ];
+  return baseTypes;
+};
+
+// Check if pin code is required (Zone A/B)
+export const isPinCodeRequired = (zoneCode) => {
+  return zoneCode === 'A' || zoneCode === 'B';
+};
+
 export const useDsrForm = () => {
   const [formData, setFormData] = useState(INITIAL_FORM_DATA);
   const [errors, setErrors] = useState({});
@@ -266,16 +337,27 @@ export const useDsrForm = () => {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState('');
 
+  const locationRef = useRef({ geoLatit: '', geoLongt: '' });
+
+  useEffect(() => {
+    if (formData.geoLatit || formData.geoLongt) {
+      locationRef.current = {
+        geoLatit: formData.geoLatit,
+        geoLongt: formData.geoLongt
+      };
+    }
+  }, [formData.geoLatit, formData.geoLongt]);
+
   const resetForm = useCallback(() => {
     setFormData({
       ...INITIAL_FORM_DATA,
       docuDate: new Date().toISOString().split('T')[0],
-      geoLatit: formData.geoLatit, // Keep current location
-      geoLongt: formData.geoLongt
+      geoLatit: locationRef.current.geoLatit,
+      geoLongt: locationRef.current.geoLongt
     });
     setErrors({});
     setMessage('');
-  }, [formData.geoLatit, formData.geoLongt]);
+  }, []);
 
   const updateField = useCallback((field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));

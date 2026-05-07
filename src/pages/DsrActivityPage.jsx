@@ -12,7 +12,7 @@ import ImageUpload from '../components/dsr/ImageUpload';
 import GiftDistribution from '../components/dsr/GiftDistribution';
 import Instructions from '../components/dsr/Instructions';
 import { dsrApi } from '../api/dsrApi';
-import { useDsrForm } from '../hooks/useDsrForm';
+import { useDsrForm, getDsrParamFlags } from '../hooks/useDsrForm';
 
 const DsrActivityPage = () => {
   const {
@@ -30,21 +30,27 @@ const DsrActivityPage = () => {
   const [activeTab, setActiveTab] = useState('basic');
   const [recentDsr, setRecentDsr] = useState([]);
   const [validationErrors, setValidationErrors] = useState([]);
+  const [dsrFlags, setDsrFlags] = useState({ actPntRq: false, prdSelRq: false, prjSelRq: false, cusSelRq: true, cusCodRq: true });
 
+  // Update flags when dsrParam changes
   useEffect(() => {
-    if (formData.procType === 'U') {
-      fetchRecentDsr();
-    }
-  }, [formData.procType]);
+    setDsrFlags(getDsrParamFlags(formData.dsrParam));
+  }, [formData.dsrParam]);
 
-  const fetchRecentDsr = async () => {
+  const fetchRecentDsr = useCallback(async () => {
     try {
       const response = await dsrApi.getRecentDsr();
       setRecentDsr(response.data);
     } catch (error) {
       console.error('Error fetching recent DSR:', error);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (formData.procType === 'U') {
+      fetchRecentDsr();
+    }
+  }, [formData.procType, fetchRecentDsr]);
 
   const handleActivityChange = useCallback((dsrParam) => {
     if (dsrParam === '04' || dsrParam === '05') {
@@ -76,6 +82,8 @@ const DsrActivityPage = () => {
         response = await dsrApi.updateActivity(formData.docuNumb, submitData);
       } else if (formData.procType === 'D') {
         response = await dsrApi.deleteActivity(formData.docuNumb);
+      } else {
+        throw new Error('Invalid process type');
       }
 
       if (response?.data) {
@@ -103,7 +111,7 @@ const DsrActivityPage = () => {
 
   const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-  useEffect(() => {
+  const captureLocation = useCallback(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -119,7 +127,11 @@ const DsrActivityPage = () => {
         { enableHighAccuracy: true, timeout: 10000 }
       );
     }
-  }, []);
+  }, [setFormData]);
+
+  useEffect(() => {
+    captureLocation();
+  }, [captureLocation]);
 
   return (
     <Container fluid className="p-3">
@@ -143,7 +155,7 @@ const DsrActivityPage = () => {
         </Alert>
       )}
 
-      {formData.isAuthorized !== false && (
+      {formData.isAuthorized === true && (
         <Tab.Container activeKey={activeTab} onSelect={setActiveTab}>
           <Row>
             <Col lg={3}>
@@ -151,12 +163,16 @@ const DsrActivityPage = () => {
                 <Nav.Item>
                   <Nav.Link eventKey="basic">Basic Details</Nav.Link>
                 </Nav.Item>
+                {dsrFlags.actPntRq && (
                 <Nav.Item>
-                  <Nav.Link eventKey="market">Market Data</Nav.Link>
+                  <Nav.Link eventKey="market">Action Points</Nav.Link>
                 </Nav.Item>
+                )}
+                {dsrFlags.prdSelRq && (
                 <Nav.Item>
                   <Nav.Link eventKey="orders">Order Details</Nav.Link>
                 </Nav.Item>
+                )}
                 <Nav.Item>
                   <Nav.Link eventKey="photos">Photos</Nav.Link>
                 </Nav.Item>
@@ -216,11 +232,14 @@ const DsrActivityPage = () => {
 
                       <hr />
 
-                      <CustomerSelector
-                        formData={formData}
-                        setFormData={setFormData}
-                        errors={errors}
-                      />
+                      {dsrFlags.cusSelRq && (
+                        <CustomerSelector
+                          formData={formData}
+                          setFormData={setFormData}
+                          errors={errors}
+                          required={dsrFlags.cusCodRq}
+                        />
+                      )}
 
                       <DsrRemarks
                         formData={formData}
@@ -231,6 +250,7 @@ const DsrActivityPage = () => {
                   </Card>
                 </Tab.Pane>
 
+                {dsrFlags.actPntRq && (
                 <Tab.Pane eventKey="market">
                   <MarketData
                     formData={formData}
@@ -238,11 +258,14 @@ const DsrActivityPage = () => {
                     errors={errors}
                   />
                 </Tab.Pane>
+                )}
 
+                {dsrFlags.prdSelRq && (
                 <Tab.Pane eventKey="orders">
                   <OrderDetails
                     formData={formData}
                     setFormData={setFormData}
+                    showProjection={dsrFlags.prjSelRq}
                   />
                   <GiftDistribution
                     formData={formData}
@@ -253,6 +276,7 @@ const DsrActivityPage = () => {
                     setFormData={setFormData}
                   />
                 </Tab.Pane>
+                )}
 
                 <Tab.Pane eventKey="photos">
                   <ImageUpload
@@ -323,19 +347,7 @@ const DsrActivityPage = () => {
         <Button
           variant="outline-primary"
           size="sm"
-          onClick={() => {
-            if (navigator.geolocation) {
-              navigator.geolocation.getCurrentPosition(
-                (position) => {
-                  setFormData(prev => ({
-                    ...prev,
-                    geoLatit: position.coords.latitude.toString(),
-                    geoLongt: position.coords.longitude.toString()
-                  }));
-                }
-              );
-            }
-          }}
+          onClick={captureLocation}
         >
           Capture Location Again
         </Button>

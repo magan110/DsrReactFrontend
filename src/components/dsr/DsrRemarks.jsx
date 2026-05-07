@@ -1,9 +1,11 @@
 import React from 'react';
 import { Form, Row, Col } from 'react-bootstrap';
-import { ACTIVITY_REMARKS } from '../../hooks/useDsrForm';
+import { ACTIVITY_REMARKS, getDsrParamFlags, isPinCodeRequired } from '../../hooks/useDsrForm';
 
 const DsrRemarks = ({ formData, setFormData, errors }) => {
   const remarks = ACTIVITY_REMARKS[formData.dsrParam] || ACTIVITY_REMARKS['05'];
+  const flags = getDsrParamFlags(formData.dsrParam);
+  const pinRequired = isPinCodeRequired(formData.zoneCode);
 
   const updateField = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
